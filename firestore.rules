@@ -1,0 +1,394 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidRoomCode(code) {
+      return code is string && code.size() >= 4 && code.size() <= 6 && code.matches('^[0-9]{4,6}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isRoomHost(roomId) {
+      return isVerified() &&
+        exists(/databases/$(database)/documents/rooms/$(roomId)) &&
+        get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid;
+    }
+
+    function isRoomMember(roomId) {
+      return isVerified() &&
+        exists(/databases/$(database)/documents/rooms/$(roomId)) &&
+        (
+          get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.memberUids
+        );
+    }
+
+    function isValidPhase(phase) {
+      return phase in [
+        'LOBBY',
+        'ROLE_REVEAL',
+        'NIGHT',
+        'NIGHT_REVENGE',
+        'DAY_VOTING',
+        'DAY_DEFENSE',
+        'DAY_FINAL_VOTE',
+        'DAY_TIE_RUNOFF',
+        'DAY_ELIMINATION',
+        'DAY_REVENGE',
+        'GAME_OVER'
+      ];
+    }
+
+    function isValidRoom(data, roomId) {
+      return data.keys().hasAll([
+          'roomCode', 'hostUid', 'phase', 'round', 'dayDurationSec', 'nightDurationSec',
+          'phaseEndsAt', 'memberUids', 'players', 'readyPlayerIds', 'votes',
+          'accusedPlayerId', 'defenseText', 'defenseSubmitted', 'tiedCandidateIds',
+          'tieRound', 'revengePlayerId', 'revengeTriggerSource', 'winner', 'winReason',
+          'lastDaySummary', 'lastVoteElimination', 'chat', 'nightPendingRolesCount', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'roomCode', 'hostUid', 'phase', 'round', 'dayDurationSec', 'nightDurationSec',
+          'phaseEndsAt', 'memberUids', 'players', 'readyPlayerIds', 'votes',
+          'accusedPlayerId', 'defenseText', 'defenseSubmitted', 'tiedCandidateIds',
+          'tieRound', 'revengePlayerId', 'revengeTriggerSource', 'winner', 'winReason',
+          'lastDaySummary', 'lastVoteElimination', 'chat', 'nightPendingRolesCount', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidRoomCode(data.roomCode) &&
+        data.roomCode == roomId &&
+        data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+        isValidPhase(data.phase) &&
+        data.round is int && data.round >= 0 && data.round <= 100 &&
+        data.dayDurationSec is int && data.dayDurationSec >= 30 && data.dayDurationSec <= 300 &&
+        data.nightDurationSec is int && data.nightDurationSec >= 15 && data.nightDurationSec <= 180 &&
+        data.phaseEndsAt is number && data.phaseEndsAt >= 0 &&
+        data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 15 &&
+        data.memberUids[0] is string &&
+        data.players is list && data.players.size() >= 1 && data.players.size() <= 15 &&
+        data.players[0] is map &&
+        data.readyPlayerIds is list && data.readyPlayerIds.size() <= 15 &&
+        (data.readyPlayerIds.size() == 0 || data.readyPlayerIds[0] is string) &&
+        data.votes is map &&
+        data.accusedPlayerId is string && data.accusedPlayerId.size() <= 128 &&
+        data.defenseText is string && data.defenseText.size() <= 300 &&
+        data.defenseSubmitted is bool &&
+        data.tiedCandidateIds is list && data.tiedCandidateIds.size() <= 15 &&
+        (data.tiedCandidateIds.size() == 0 || data.tiedCandidateIds[0] is string) &&
+        data.tieRound is int && data.tieRound >= 0 && data.tieRound <= 50 &&
+        data.revengePlayerId is string && data.revengePlayerId.size() <= 128 &&
+        data.revengeTriggerSource is string && data.revengeTriggerSource.size() <= 32 &&
+        data.winner is string && data.winner.size() <= 32 &&
+        data.winReason is string && data.winReason.size() <= 300 &&
+        (data.lastDaySummary == null || data.lastDaySummary is map) &&
+        (data.lastVoteElimination == null || data.lastVoteElimination is map) &&
+        data.chat is list && data.chat.size() <= 80 &&
+        (data.chat.size() == 0 || data.chat[0] is map) &&
+        data.nightPendingRolesCount is int && data.nightPendingRolesCount >= 0 && data.nightPendingRolesCount <= 15 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSecret(data, playerUid) {
+      return data.keys().hasAll([
+          'uid', 'hostUid', 'role', 'team', 'mafiaTeammates', 'mafiaChat',
+          'sniperHasBullet', 'sheikhAbilityUsed', 'myNightSubmitted', 'myNightChoice', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'hostUid', 'role', 'team', 'mafiaTeammates', 'mafiaChat',
+          'sniperHasBullet', 'sheikhAbilityUsed', 'myNightSubmitted', 'myNightChoice', 'updatedAt'
+        ]) &&
+        data.uid is string && data.uid == playerUid && data.uid.size() <= 128 &&
+        data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+        data.role is string && data.role.size() <= 40 &&
+        data.team is string && data.team.size() <= 20 &&
+        data.mafiaTeammates is list && data.mafiaTeammates.size() <= 3 &&
+        (data.mafiaTeammates.size() == 0 || data.mafiaTeammates[0] is map) &&
+        data.mafiaChat is list && data.mafiaChat.size() <= 40 &&
+        (data.mafiaChat.size() == 0 || data.mafiaChat[0] is map) &&
+        data.sniperHasBullet is bool &&
+        data.sheikhAbilityUsed is bool &&
+        data.myNightSubmitted is bool &&
+        data.myNightChoice is string && data.myNightChoice.size() <= 128 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidHostState(data) {
+      return data.keys().hasAll(['hostUid', 'internalRoom', 'updatedAt']) &&
+        data.keys().hasOnly(['hostUid', 'internalRoom', 'updatedAt']) &&
+        data.hostUid is string && data.hostUid == request.auth.uid && data.hostUid.size() <= 128 &&
+        data.internalRoom is map &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPlayerRequest(data) {
+      return data.keys().hasAll([
+          'authorUid', 'hostUid', 'actionType', 'playerName', 'targetId', 'text', 'processed', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'authorUid', 'hostUid', 'actionType', 'playerName', 'targetId', 'text', 'processed', 'createdAt'
+        ]) &&
+        data.authorUid is string && data.authorUid == request.auth.uid && data.authorUid.size() <= 128 &&
+        data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+        data.actionType in [
+          'JOIN_ROOM', 'MARK_ROLE_READY', 'SUBMIT_NIGHT_ACTION', 'CAST_VOTE',
+          'WITHDRAW_VOTE', 'SUBMIT_DEFENSE', 'USE_SHEIKH_ABILITY',
+          'FINALIZE_DEFENSE', 'SUBMIT_REVENGE', 'SEND_CHAT'
+        ] &&
+        data.playerName is string && data.playerName.size() <= 32 &&
+        data.targetId is string && data.targetId.size() <= 128 &&
+        data.text is string && data.text.size() <= 240 &&
+        data.processed is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidVoicePeer(data, peerUid) {
+      return data.keys().hasAll([
+          'uid', 'hostUid', 'name', 'joinedVoice', 'micEnabled', 'speaking', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'hostUid', 'name', 'joinedVoice', 'micEnabled', 'speaking', 'updatedAt'
+        ]) &&
+        data.uid is string && data.uid == peerUid && data.uid.size() <= 128 &&
+        data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+        data.name is string && data.name.size() <= 32 &&
+        data.joinedVoice is bool &&
+        data.micEnabled is bool &&
+        data.speaking is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVoiceSignal(data) {
+      return data.keys().hasAll([
+          'fromUid', 'toUid', 'signalType', 'payload', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'fromUid', 'toUid', 'signalType', 'payload', 'createdAt'
+        ]) &&
+        data.fromUid is string && data.fromUid == request.auth.uid && data.fromUid.size() <= 128 &&
+        data.toUid is string && data.toUid.size() >= 1 && data.toUid.size() <= 128 &&
+        data.toUid != data.fromUid &&
+        data.signalType in ['offer', 'answer', 'ice'] &&
+        data.payload is string && data.payload.size() >= 1 && data.payload.size() <= 12000 &&
+        data.createdAt is timestamp;
+    }
+
+    match /rooms/{roomId} {
+      // Any verified signed-in user who knows the exact room code may read public room state to join
+      allow get: if isVerified() && isValidRoomCode(roomId);
+      // List queries strictly restricted to rooms the user belongs to or hosts
+      allow list: if isVerified() && (
+        resource.data.hostUid == request.auth.uid ||
+        request.auth.uid in resource.data.memberUids
+      );
+
+      allow create: if isVerified() &&
+        isValidRoomCode(roomId) &&
+        isValidRoom(incoming(), roomId) &&
+        incoming().hostUid == request.auth.uid &&
+        incoming().phase == 'LOBBY' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerified() &&
+        isValidRoomCode(roomId) &&
+        isValidRoom(incoming(), roomId) &&
+        existing().hostUid == request.auth.uid &&
+        incoming().hostUid == existing().hostUid &&
+        incoming().roomCode == existing().roomCode &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            existing().phase != 'GAME_OVER' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'phase', 'round', 'dayDurationSec', 'nightDurationSec', 'phaseEndsAt',
+              'memberUids', 'players', 'readyPlayerIds', 'votes', 'accusedPlayerId',
+              'defenseText', 'defenseSubmitted', 'tiedCandidateIds', 'tieRound',
+              'revengePlayerId', 'revengeTriggerSource', 'winner', 'winReason',
+              'lastDaySummary', 'lastVoteElimination', 'chat', 'nightPendingRolesCount', 'updatedAt'
+            ])
+          ) ||
+          (
+            existing().phase == 'GAME_OVER' &&
+            incoming().phase == 'LOBBY' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'phase', 'round', 'phaseEndsAt', 'players', 'readyPlayerIds', 'votes',
+              'accusedPlayerId', 'defenseText', 'defenseSubmitted', 'tiedCandidateIds',
+              'tieRound', 'revengePlayerId', 'revengeTriggerSource', 'winner', 'winReason',
+              'lastDaySummary', 'lastVoteElimination', 'chat', 'nightPendingRolesCount', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isVerified() && isValidRoomCode(roomId) && existing().hostUid == request.auth.uid;
+
+      match /secrets/{playerUid} {
+        allow get: if isVerified() && isValidRoomCode(roomId) && isValidId(playerUid) && (
+          request.auth.uid == playerUid ||
+          isRoomHost(roomId)
+        );
+        allow list: if isVerified() && resource.data.hostUid == request.auth.uid;
+
+        allow create: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(playerUid) &&
+          isValidSecret(incoming(), playerUid) &&
+          incoming().updatedAt == request.time &&
+          isRoomHost(roomId) &&
+          incoming().hostUid == request.auth.uid;
+
+        allow update: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(playerUid) &&
+          isValidSecret(incoming(), playerUid) &&
+          incoming().uid == existing().uid &&
+          incoming().hostUid == existing().hostUid &&
+          incoming().updatedAt == request.time &&
+          isRoomHost(roomId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'role', 'team', 'mafiaTeammates', 'mafiaChat', 'sniperHasBullet',
+            'sheikhAbilityUsed', 'myNightSubmitted', 'myNightChoice', 'updatedAt'
+          ]);
+
+        allow delete: if isVerified() && isValidRoomCode(roomId) && isValidId(playerUid) && isRoomHost(roomId);
+      }
+
+      match /hostState/{docId} {
+        allow get: if isVerified() && isValidRoomCode(roomId) && isValidId(docId) && isRoomHost(roomId);
+        allow list: if isVerified() && resource.data.hostUid == request.auth.uid;
+        allow create: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(docId) &&
+          isValidHostState(incoming()) &&
+          incoming().updatedAt == request.time &&
+          isRoomHost(roomId);
+        allow update: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(docId) &&
+          isValidHostState(incoming()) &&
+          incoming().hostUid == existing().hostUid &&
+          incoming().updatedAt == request.time &&
+          isRoomHost(roomId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['internalRoom', 'updatedAt']);
+        allow delete: if isVerified() && isValidRoomCode(roomId) && isValidId(docId) && isRoomHost(roomId);
+      }
+
+      match /playerRequests/{reqId} {
+        allow get: if isVerified() && isValidRoomCode(roomId) && isValidId(reqId) && (
+          existing().authorUid == request.auth.uid ||
+          isRoomHost(roomId)
+        );
+        allow list: if isVerified() && (
+          resource.data.hostUid == request.auth.uid ||
+          resource.data.authorUid == request.auth.uid
+        );
+
+        allow create: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(reqId) &&
+          isValidPlayerRequest(incoming()) &&
+          incoming().processed == false &&
+          incoming().createdAt == request.time &&
+          exists(/databases/$(database)/documents/rooms/$(roomId)) &&
+          incoming().hostUid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid;
+
+        allow update: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(reqId) &&
+          isValidPlayerRequest(incoming()) &&
+          incoming().authorUid == existing().authorUid &&
+          incoming().hostUid == existing().hostUid &&
+          incoming().createdAt == existing().createdAt &&
+          isRoomHost(roomId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['processed']);
+
+        allow delete: if isVerified() && isValidRoomCode(roomId) && isValidId(reqId) && (
+          isRoomHost(roomId) ||
+          existing().authorUid == request.auth.uid
+        );
+      }
+
+      match /voicePeers/{peerUid} {
+        allow get: if isVerified() && isValidRoomCode(roomId) && isValidId(peerUid) && isRoomMember(roomId);
+        allow list: if isVerified() && (
+          resource.data.uid == request.auth.uid ||
+          resource.data.hostUid == request.auth.uid
+        );
+
+        allow create: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(peerUid) &&
+          peerUid == request.auth.uid &&
+          isRoomMember(roomId) &&
+          isValidVoicePeer(incoming(), peerUid) &&
+          incoming().hostUid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid &&
+          incoming().updatedAt == request.time;
+
+        allow update: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(peerUid) &&
+          peerUid == request.auth.uid &&
+          isRoomMember(roomId) &&
+          isValidVoicePeer(incoming(), peerUid) &&
+          incoming().uid == existing().uid &&
+          incoming().hostUid == existing().hostUid &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'joinedVoice', 'micEnabled', 'speaking', 'updatedAt'
+          ]);
+
+        allow delete: if isVerified() && isValidRoomCode(roomId) && isValidId(peerUid) && (
+          peerUid == request.auth.uid ||
+          isRoomHost(roomId)
+        );
+      }
+
+      match /voiceSignals/{signalId} {
+        allow get: if isVerified() && isValidRoomCode(roomId) && isValidId(signalId) && (
+          existing().toUid == request.auth.uid ||
+          existing().fromUid == request.auth.uid
+        );
+        allow list: if isVerified() && (
+          resource.data.toUid == request.auth.uid ||
+          resource.data.fromUid == request.auth.uid
+        );
+
+        allow create: if isVerified() &&
+          isValidRoomCode(roomId) &&
+          isValidId(signalId) &&
+          isRoomMember(roomId) &&
+          isValidVoiceSignal(incoming()) &&
+          incoming().createdAt == request.time;
+
+        allow delete: if isVerified() && isValidRoomCode(roomId) && isValidId(signalId) && (
+          existing().toUid == request.auth.uid ||
+          existing().fromUid == request.auth.uid ||
+          isRoomHost(roomId)
+        );
+      }
+    }
+  }
+}

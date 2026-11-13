@@ -1,0 +1,404 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Public state of a 15-player Mafia game room without secret role assignments.",
+      "type": "object",
+      "properties": {
+        "roomCode": {
+          "type": "string",
+          "description": "4 to 6 digit room identifier",
+          "minLength": 4,
+          "maxLength": 6,
+          "pattern": "^[0-9]{4,6}$"
+        },
+        "hostUid": {
+          "type": "string",
+          "description": "Firebase UID of the room host",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "phase": {
+          "type": "string",
+          "description": "Current phase of the Mafia game",
+          "enum": [
+            "LOBBY",
+            "ROLE_REVEAL",
+            "NIGHT",
+            "NIGHT_REVENGE",
+            "DAY_VOTING",
+            "DAY_DEFENSE",
+            "DAY_FINAL_VOTE",
+            "DAY_TIE_RUNOFF",
+            "DAY_ELIMINATION",
+            "DAY_REVENGE",
+            "GAME_OVER"
+          ]
+        },
+        "round": {
+          "type": "integer",
+          "description": "Current round number"
+        },
+        "dayDurationSec": {
+          "type": "integer",
+          "description": "Day voting duration in seconds"
+        },
+        "nightDurationSec": {
+          "type": "integer",
+          "description": "Night phase duration in seconds"
+        },
+        "phaseEndsAt": {
+          "type": "number",
+          "description": "Unix epoch ms when current phase expires, or 0"
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "List of joined human Firebase UIDs (max 15)"
+        },
+        "players": {
+          "type": "array",
+          "description": "List of public player objects (max 15)"
+        },
+        "readyPlayerIds": {
+          "type": "array",
+          "description": "IDs of players ready after viewing role card (max 15)"
+        },
+        "votes": {
+          "type": "object",
+          "description": "Map of voter playerId to target playerId"
+        },
+        "accusedPlayerId": {
+          "type": "string",
+          "description": "Player ID on defense stand or empty string",
+          "maxLength": 128
+        },
+        "defenseText": {
+          "type": "string",
+          "description": "Submitted defense statement",
+          "maxLength": 300
+        },
+        "defenseSubmitted": {
+          "type": "boolean",
+          "description": "Whether the accused submitted their single defense"
+        },
+        "tiedCandidateIds": {
+          "type": "array",
+          "description": "Player IDs tied in runoff vote (max 15)"
+        },
+        "tieRound": {
+          "type": "integer",
+          "description": "Current tie-breaker iteration"
+        },
+        "revengePlayerId": {
+          "type": "string",
+          "description": "Righteous Boy player ID picking a target or empty string",
+          "maxLength": 128
+        },
+        "revengeTriggerSource": {
+          "type": "string",
+          "description": "What triggered Righteous Boy revenge",
+          "maxLength": 32
+        },
+        "winner": {
+          "type": "string",
+          "description": "Winning team or empty string",
+          "maxLength": 32
+        },
+        "winReason": {
+          "type": "string",
+          "description": "Explanation of win condition",
+          "maxLength": 300
+        },
+        "lastDaySummary": {
+          "type": "object",
+          "description": "Summary of night events for dawn announcement"
+        },
+        "lastVoteElimination": {
+          "type": "object",
+          "description": "Details of the most recent player eliminated by town vote"
+        },
+        "chat": {
+          "type": "array",
+          "description": "Public system, chat, and defense messages (max 80)"
+        },
+        "nightPendingRolesCount": {
+          "type": "integer",
+          "description": "Count of active night roles still pending"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": [
+        "roomCode",
+        "hostUid",
+        "phase",
+        "round",
+        "dayDurationSec",
+        "nightDurationSec",
+        "phaseEndsAt",
+        "memberUids",
+        "players",
+        "readyPlayerIds",
+        "votes",
+        "accusedPlayerId",
+        "defenseText",
+        "defenseSubmitted",
+        "tiedCandidateIds",
+        "tieRound",
+        "revengePlayerId",
+        "revengeTriggerSource",
+        "winner",
+        "winReason",
+        "lastVoteElimination",
+        "chat",
+        "nightPendingRolesCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PlayerSecret": {
+      "title": "PlayerSecret",
+      "description": "Private role, team, Mafia whispers, and night action status visible only to one player.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "hostUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "team": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "mafiaTeammates": {
+          "type": "array",
+          "description": "Teammate names and roles visible only to Mafia players (max 3)"
+        },
+        "mafiaChat": {
+          "type": "array",
+          "description": "Private Mafia whisper messages (max 40)"
+        },
+        "sniperHasBullet": {
+          "type": "boolean"
+        },
+        "sheikhAbilityUsed": {
+          "type": "boolean"
+        },
+        "myNightSubmitted": {
+          "type": "boolean"
+        },
+        "myNightChoice": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "hostUid",
+        "role",
+        "team",
+        "mafiaTeammates",
+        "mafiaChat",
+        "sniperHasBullet",
+        "sheikhAbilityUsed",
+        "myNightSubmitted",
+        "myNightChoice",
+        "updatedAt"
+      ]
+    },
+    "HostPrivateState": {
+      "title": "HostPrivateState",
+      "description": "Authoritative full internal room state readable and writable only by the host.",
+      "type": "object",
+      "properties": {
+        "hostUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "internalRoom": {
+          "type": "object",
+          "description": "Full internal room state map"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["hostUid", "internalRoom", "updatedAt"]
+    },
+    "PlayerRequest": {
+      "title": "PlayerRequest",
+      "description": "Authenticated action request sent by a participant to the room host engine.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "hostUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actionType": {
+          "type": "string",
+          "enum": [
+            "JOIN_ROOM",
+            "MARK_ROLE_READY",
+            "SUBMIT_NIGHT_ACTION",
+            "CAST_VOTE",
+            "WITHDRAW_VOTE",
+            "SUBMIT_DEFENSE",
+            "USE_SHEIKH_ABILITY",
+            "FINALIZE_DEFENSE",
+            "SUBMIT_REVENGE",
+            "SEND_CHAT"
+          ]
+        },
+        "playerName": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "targetId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "processed": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "authorUid",
+        "hostUid",
+        "actionType",
+        "playerName",
+        "targetId",
+        "text",
+        "processed",
+        "createdAt"
+      ]
+    },
+    "VoicePeer": {
+      "title": "VoicePeer",
+      "description": "Live voice chat presence and mute/speaking state for a human player in a room.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "hostUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "joinedVoice": {
+          "type": "boolean"
+        },
+        "micEnabled": {
+          "type": "boolean"
+        },
+        "speaking": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "hostUid", "name", "joinedVoice", "micEnabled", "speaking", "updatedAt"]
+    },
+    "VoiceSignal": {
+      "title": "VoiceSignal",
+      "description": "WebRTC peer-to-peer signaling message (offer, answer, ICE candidate) between two room players.",
+      "type": "object",
+      "properties": {
+        "fromUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "toUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "signalType": {
+          "type": "string",
+          "enum": ["offer", "answer", "ice"]
+        },
+        "payload": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["fromUid", "toUid", "signalType", "payload", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Public state for an active or lobby Mafia room"
+    },
+    "/rooms/{roomId}/secrets/{playerUid}": {
+      "schema": { "$ref": "#/entities/PlayerSecret" },
+      "description": "Secret role and Mafia whisper data for a specific participant"
+    },
+    "/rooms/{roomId}/hostState/{docId}": {
+      "schema": { "$ref": "#/entities/HostPrivateState" },
+      "description": "Authoritative game state managed strictly by the room host"
+    },
+    "/rooms/{roomId}/playerRequests/{reqId}": {
+      "schema": { "$ref": "#/entities/PlayerRequest" },
+      "description": "Incoming player actions processed by the room host"
+    },
+    "/rooms/{roomId}/voicePeers/{peerUid}": {
+      "schema": { "$ref": "#/entities/VoicePeer" },
+      "description": "Voice chat presence and microphone state per participant"
+    },
+    "/rooms/{roomId}/voiceSignals/{signalId}": {
+      "schema": { "$ref": "#/entities/VoiceSignal" },
+      "description": "WebRTC SDP/ICE signaling documents for group voice chat"
+    }
+  }
+}
